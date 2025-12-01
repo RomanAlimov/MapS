@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Атлас деревьев (чистый Go)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; }
+    #map { height: 500px; margin: 15px 0; }
+    input, select, button { padding: 6px; margin: 4px 4px 4px 0; }
+    .form-group { margin: 8px 0; }
+  </style>
+</head>
+<body>
+
+<h1>🌳 Цифровой атлас деревьев</h1>
+
+<!-- Форма добавления -->
+<div style="border:1px solid #ddd; padding:15px; margin:15px 0;">
+  <h3>➕ Добавить дерево</h3>
+  <form id="addForm">
+    <div class="form-group">
+      <input name="species" placeholder="Вид дерева" required>
+    </div>
+    <div class="form-group">
+      <input name="lat" type="number" step="any" placeholder="Широта" readonly required>
+      <input name="lng" type="number" step="any" placeholder="Долгота" readonly required>
+    </div>
+    <div class="form-group">
+      <input name="planted_year" type="number" placeholder="Год посадки">
+    </div>
+    <div class="form-group">
+      <select name="health_status">
+        <option value="healthy">Здоровое</option>
+        <option value="sick">Больное</option>
+        <option value="dead">Мёртвое</option>
+      </select>
+    </div>
+    <button type="submit">Добавить</button>
+  </form>
+</div>
+
+<div id="message" style="color:green; min-height:1.2em;"></div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  const map = L.map('map').setView([55.75, 37.62], 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+  // Клик по карте → координаты
+  map.on('click', e => {
+    document.querySelector('[name=lat]').value = e.latlng.lat.toFixed(6);
+    document.querySelector('[name=lng]').value = e.latlng.lng.toFixed(6);
+  });
+
+  // Загрузка деревьев
+  function loadTrees() {
+    fetch('/trees')
+      .then(r => r.json())
+      .then(trees => {
+        map.eachLayer(layer => {
+          if (layer instanceof L.Marker || layer instanceof L.CircleMarker) map.removeLayer(layer);
+        });
+        trees.forEach(t => {
+          let color = t.health_status === 'healthy' ? '#2ecc71' :
+                      t.health_status === 'sick' ? '#f39c12' : '#e74c3c';
+          L.circleMarker([t.lat, t.lng], { radius: 10, color, fillColor: color, fillOpacity: 0.8 })
+           .bindPopup(`<b>${t.species}</b><br>Состояние: ${t.health_status}<br>Год: ${t.planted_year || '—'}`)
+           .addTo(map);
+        });
+      });
+  }
+
+  // Отправка формы
+  document.getElementById('addForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const data = new FormData(e.target);
+    const res = await fetch('/trees', {
+      method: 'POST',
+      body: data
+    });
+    if (res.ok) {
+      document.getElementById('message').textContent = '✅ Дерево добавлено!';
+      e.target.reset();
+      loadTrees();
+      setTimeout(() => document.getElementById('message').textContent = '', 3000);
+    } else {
+      alert('Ошибка');
+    }
+  };
+
+  loadTrees();
+</script>
+
+</body>
+</html>
