@@ -1,98 +1,135 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>Атлас деревьев (чистый Go)</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <style>
-    body { font-family: sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; }
-    #map { height: 500px; margin: 15px 0; }
-    input, select, button { padding: 6px; margin: 4px 4px 4px 0; }
-    .form-group { margin: 8px 0; }
-  </style>
+<meta charset="UTF-8">
+<title>Атлас деревьев Челябинск</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v10.2.1/ol.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#0a0a0a 0%,#1a0f3d 50%,#2d1b69 100%);color:#e0d7ff;padding:20px;max-width:1000px;margin:auto;min-height:100vh;position:relative}
+h1{color:#c9a7eb;text-shadow:0 0 20px rgba(201,167,235,.5);text-align:center;margin:20px 0}
+#map{height:500px;border:2px solid #4a3780;border-radius:12px;margin:20px 0;box-shadow:0 10px 40px rgba(45,27,105,.6)}
+.form{background:rgba(26,15,61,.95);backdrop-filter:blur(15px);border:1px solid #4a3780;border-radius:12px;padding:25px;margin:20px 0;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+input,select,button{padding:12px;margin:8px 4px 0 0;border:1px solid #5a4290;border-radius:8px;background:rgba(26,15,61,.8);color:#e0d7ff}
+input:focus,select:focus,button:focus{outline:none;box-shadow:0 0 15px rgba(138,99,255,.5)}
+button{background:linear-gradient(45deg,#6a4caf,#8a63ff);border:none;cursor:pointer;font-weight:600}
+button:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(138,99,255,.4)}
+#msg{color:#a8ff78;font-weight:500;text-shadow:0 0 10px rgba(168,255,120,.5);margin:15px 0}
+.credit{position:fixed;bottom:20px;right:20px;background:rgba(26,15,61,.95);border:1px solid #4a3780;border-radius:12px;padding:15px;color:#c9a7eb;font-weight:600;text-align:center;z-index:1000}
+.credit::before{content:'🎓'}
+.tooltip{position:absolute;background:rgba(10,10,20,.95);border:1px solid #4a3780;border-radius:6px;padding:8px;color:#e0d7ff;font-size:13px;pointer-events:none;box-shadow:0 4px 15px rgba(0,0,0,.5);white-space:nowrap;z-index:1000;display:none;max-width:200px}
+</style>
 </head>
 <body>
+<h1>🌳 Атлас деревьев Челябинск</h1>
 
-<h1>🌳 Цифровой атлас деревьев</h1>
-
-<!-- Форма добавления -->
-<div style="border:1px solid #ddd; padding:15px; margin:15px 0;">
-  <h3>➕ Добавить дерево</h3>
-  <form id="addForm">
-    <div class="form-group">
-      <input name="species" placeholder="Вид дерева" required>
-    </div>
-    <div class="form-group">
-      <input name="lat" type="number" step="any" placeholder="Широта" readonly required>
-      <input name="lng" type="number" step="any" placeholder="Долгота" readonly required>
-    </div>
-    <div class="form-group">
-      <input name="planted_year" type="number" placeholder="Год посадки">
-    </div>
-    <div class="form-group">
-      <select name="health_status">
-        <option value="healthy">Здоровое</option>
-        <option value="sick">Больное</option>
-        <option value="dead">Мёртвое</option>
-      </select>
-    </div>
-    <button type="submit">Добавить</button>
-  </form>
+<div class="form">
+<h3>➕ Добавить дерево</h3>
+<form id="form">
+<input name="species" placeholder="Сосна" required>
+<input name="year" type="number" min="1900" max="2025" placeholder="2020">
+<input name="lat" id="lat" readonly placeholder="Широта">
+<input name="lng" id="lng" readonly placeholder="Долгота">
+<select name="status">
+<option value="healthy">🌿 Здоровое</option>
+<option value="sick">⚠️ Больное</option>
+<option value="dead">💀 Мёртвое</option>
+</select>
+<button>Добавить</button>
+</form>
+<div id="msg"></div>
 </div>
 
-<div id="message" style="color:green; min-height:1.2em;"></div>
-
 <div id="map"></div>
+<div class="credit">Алимов Роман</div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ol@v10.2.1/dist/ol.js"></script>
 <script>
-  const map = L.map('map').setView([55.75, 37.62], 11);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+// 1. Карта + тестовое дерево
+let trees=[{lat:55.1644,lng:61.4368,species:'Ель сибирская',year:2022,status:'healthy'}];
+let map=new ol.Map({
+target:'map',
+layers:[new ol.layer.Tile({source:new ol.source.OSM()}),new ol.layer.Vector({source:new ol.source.Vector()})],
+view:new ol.View({center:ol.proj.fromLonLat([61.4368,55.1644]),zoom:13})
+});
+let vs=map.getLayers().item(1).getSource();
 
-  // Клик по карте → координаты
-  map.on('click', e => {
-    document.querySelector('[name=lat]').value = e.latlng.lat.toFixed(6);
-    document.querySelector('[name=lng]').value = e.latlng.lng.toFixed(6);
-  });
+// 2. Маленькие значки 6px
+function treeStyle(feat){
+let status=feat.get('status'),colors={healthy:'#a8ff78',sick:'#ffaa00',dead:'#ff4444'};
+return new ol.style.Style({
+image:new ol.style.Circle({radius:6,fill:new ol.style.Fill({color:colors[status]}),stroke:new ol.style.Stroke({color:'white',width:2})}),
+text:new ol.style.Text({text:status=='healthy'?'🌿':status=='sick'?'⚠️':'💀',font:'bold 12px Arial',fill:new ol.style.Fill({color:'white'})})
+});
+}
+map.getLayers().item(1).setStyle(treeStyle);
 
-  // Загрузка деревьев
-  function loadTrees() {
-    fetch('/trees')
-      .then(r => r.json())
-      .then(trees => {
-        map.eachLayer(layer => {
-          if (layer instanceof L.Marker || layer instanceof L.CircleMarker) map.removeLayer(layer);
-        });
-        trees.forEach(t => {
-          let color = t.health_status === 'healthy' ? '#2ecc71' :
-                      t.health_status === 'sick' ? '#f39c12' : '#e74c3c';
-          L.circleMarker([t.lat, t.lng], { radius: 10, color, fillColor: color, fillOpacity: 0.8 })
-           .bindPopup(`<b>${t.species}</b><br>Состояние: ${t.health_status}<br>Год: ${t.planted_year || '—'}`)
-           .addTo(map);
-        });
-      });
-  }
+// 3. Tooltip НАД значком
+let tooltip=document.createElement('div');
+tooltip.className='tooltip';
+document.body.appendChild(tooltip);
+let currentFeature=null;
 
-  // Отправка формы
-  document.getElementById('addForm').onsubmit = async (e) => {
-    e.preventDefault();
-    const data = new FormData(e.target);
-    const res = await fetch('/trees', {
-      method: 'POST',
-      body: data
-    });
-    if (res.ok) {
-      document.getElementById('message').textContent = '✅ Дерево добавлено!';
-      e.target.reset();
-      loadTrees();
-      setTimeout(() => document.getElementById('message').textContent = '', 3000);
-    } else {
-      alert('Ошибка');
-    }
-  };
+map.on('pointermove',e=>{
+let pixel=map.getEventPixel(e.originalEvent);
+let feat=map.forEachFeatureAtPixel(pixel,f=>f);
+if(feat!==currentFeature){
+currentFeature=feat;
+if(feat){
+let props=feat.getProperties();
+tooltip.innerHTML=`
+<b style="color:#a8ff78">🌳 ${props.species}</b><br>
+<span style="color:#ffaa00">${props.status}</span><br>
+<span style="color:#b8a8e0">Год: ${props.year||'—'}</span>
+`;
+let coord=feat.getGeometry().getCoordinates();
+let pixelPos=map.getPixelFromCoordinate(coord);
+tooltip.style.left=pixelPos[0]+10+'px';
+tooltip.style.top=pixelPos[1]-50+'px'; // ✅ НАД значком
+tooltip.style.display='block';
+map.getTargetElement().style.cursor='pointer';
+}else{
+tooltip.style.display='none';
+map.getTargetElement().style.cursor='';
+}
+}
+});
 
-  loadTrees();
+map.on('pointerleave',()=>{
+tooltip.style.display='none';
+currentFeature=null;
+map.getTargetElement().style.cursor='';
+});
+
+// 4. Клик = координаты
+map.on('singleclick',e=>{
+let c=ol.proj.toLonLat(e.coordinate);
+document.getElementById('lat').value=c[1].toFixed(6);
+document.getElementById('lng').value=c[0].toFixed(6);
+tooltip.style.display='none';
+});
+
+// 5. Добавить дерево
+document.getElementById('form').onsubmit=e=>{
+e.preventDefault();
+let f=new FormData(e.target),tree={
+species:f.get('species'),
+year:f.get('year')||null,
+lat:+f.get('lat'),
+lng:+f.get('lng'),
+status:f.get('status')
+};
+trees.push(tree);
+vs.clear();
+trees.forEach(t=>vs.addFeature(new ol.Feature({
+geometry:new ol.geom.Point(ol.proj.fromLonLat([t.lng,t.lat])),
+...t
+})));
+map.getView().animate({center:ol.proj.fromLonLat([tree.lng,tree.lat]),zoom:16});
+document.getElementById('msg').textContent='✅ Добавлено!';
+setTimeout(()=>document.getElementById('msg').textContent='',2e3);
+e.target.reset();
+};
 </script>
-
 </body>
 </html>
